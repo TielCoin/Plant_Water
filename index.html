@@ -75,7 +75,9 @@ let tutorialShown = true;
 let lastOrbTime = 0;
 let images = {};
 let keys = {};
-let startTime = null;
+let lastFrameTime = null;
+let gameRunning = true;
+let animationId = null;
 
 // Load images
 function loadImages(callback) {
@@ -111,6 +113,8 @@ function spawnOrb() {
 
 // Update
 function update(delta) {
+  if (!gameRunning) return;
+
   // Move player
   if (keys['ArrowLeft']) player.x -= 5;
   if (keys['ArrowRight']) player.x += 5;
@@ -132,7 +136,7 @@ function update(delta) {
   });
 
   // Sun movement
-  sunX -= (canvas.width - 240) / (60 * 60); // over 60s
+  sunX -= (canvas.width - 240) / (60 * (1000/delta)); 
   gameTime -= delta/1000;
   if (gameTime <= 0) endGame();
 
@@ -145,63 +149,58 @@ function update(delta) {
 
 // Draw
 function draw() {
-  // Background
   ctx.drawImage(images.bg, 0, 0, canvas.width, canvas.height);
-
-  // Sun
   ctx.drawImage(images.sun, sunX, 50, 80, 80);
 
-  // Watermark
   ctx.font = '20px Arial';
   ctx.fillStyle = 'white';
   ctx.shadowColor = 'black';
   ctx.shadowBlur = 4;
   ctx.fillText('Game by Balaji', canvas.width - 180, canvas.height - 20);
 
-  // Plants
   plants.forEach(p => {
     let img = images.front;
     if (p.thirst <= 0) img = images.dead;
     else if (p.thirst <= 25) img = images.health;
     ctx.drawImage(img, p.x - 50, p.y - 100, 100, 100);
 
-    // Thirst bar
     ctx.fillStyle = 'red';
     ctx.fillRect(p.x - 30, p.y - 110, 60, 8);
     ctx.fillStyle = 'blue';
     ctx.fillRect(p.x - 30, p.y - 110, 60 * (p.thirst/100), 8);
   });
 
-  // Player
   let playerImg = player.facing === 'back' ? images.back : images.front;
   ctx.drawImage(playerImg, player.x - player.w/2, player.y - player.h/2, player.w, player.h);
 
-  // Orbs
   orbs.forEach(o => {
     ctx.drawImage(images.orb, o.x - o.size/2, o.y - o.size/2, o.size, o.size);
   });
 
-  // Time
   ctx.font = '24px Arial';
   ctx.fillText(`Time: ${Math.ceil(gameTime)}`, 20, 30);
 }
 
 function gameLoop(timestamp) {
-  if (!startTime) startTime = timestamp;
-  let delta = timestamp - startTime;
-  startTime = timestamp;
+  if (!lastFrameTime) lastFrameTime = timestamp;
+  let delta = timestamp - lastFrameTime;
+  lastFrameTime = timestamp;
+
   update(delta);
   draw();
-  requestAnimationFrame(gameLoop);
+
+  if (gameRunning) {
+    animationId = requestAnimationFrame(gameLoop);
+  }
 }
 
 function endGame() {
+  gameRunning = false;
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = 'white';
   ctx.font = '48px Arial';
   ctx.fillText('Good night 💤', canvas.width/2 - 150, canvas.height/2);
-  cancelAnimationFrame(gameLoop);
 }
 
 // Input
