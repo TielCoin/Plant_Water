@@ -1,273 +1,498 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Water the Plant</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Water the Plant — Game by Balaji</title>
 <style>
-body {
-    margin: 0;
-    overflow: hidden;
-    background: #cceeff;
-    touch-action: none;
-}
-canvas {
-    display: block;
-}
+  :root { --ui-pad:12px; font-family: "Helvetica Neue", Arial, sans-serif; }
+  html,body{height:100%;margin:0;background:#cceeff;overflow:hidden; -webkit-tap-highlight-color: transparent;}
+  canvas{display:block;width:100%;height:100%;}
+  /* Small hint text (hidden on tiny screens) */
+  .hint { position: absolute; left: 12px; bottom: 12px; color:#083146; background: rgba(255,255,255,0.6);
+          padding:8px 10px; border-radius:8px; font-size:13px; backdrop-filter: blur(2px); }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div class="hint">Swipe up to throw • Swipe left/right at bottom to move • Catch sunlight to charge Super Throw</div>
 <script>
-// ====== Load Required PNGs ======
-function loadImage(src) {
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha: true });
+
+  // load images (exact filenames required)
+  function loadImage(src){
     return new Promise(res => {
-        const img = new Image();
-        img.onload = () => res(img);
-        img.onerror = () => res(null); // fallback if missing
-        img.src = src;
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => res(null);
+      i.src = src;
     });
-}
+  }
 
-Promise.all([
-    loadImage("Front.png"),
-    loadImage("Back.PNG"),
-    loadImage("Health.PNG"),
-    loadImage("Dead.PNG")
-]).then(([frontImg, backImg, healthyImg, deadImg]) => {
-    startGame(frontImg, backImg, healthyImg, deadImg);
-});
+  Promise.all([
+    loadImage('Front.png'),
+    loadImage('Back.PNG'),
+    loadImage('Health.PNG'),
+    loadImage('Dead.PNG')
+  ]).then(([imgFront, imgBack, imgHealth, imgDead]) => start(imgFront, imgBack, imgHealth, imgDead) );
 
-function startGame(playerFrontImg, playerBackImg, plantHealthyImg, plantWitheredImg) {
-    // ====== Web Audio API for Splash Sound ======
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    function playSplash() {
-        let osc = audioCtx.createOscillator();
-        let gainNode = audioCtx.createGain();
-        osc.type = "triangle";
-        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-        osc.connect(gainNode).connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.3);
-    }
-
-    // ====== Setup Canvas ======
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
-    let W, H;
-    function resize() {
-        W = canvas.width = window.innerWidth;
-        H = canvas.height = window.innerHeight;
-    }
-    window.addEventListener("resize", resize);
+  // --------- Start game -----------
+  function start(imgFront, imgBack, imgHealth, imgDead){
+    // sizes
+    let W = innerWidth, H = innerHeight;
+    function resize(){ W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+    addEventListener('resize', resize);
     resize();
 
-    // ====== Game State ======
-    let player = { x: W / 2, y: H - 150, w: 80, h: 100, dir: "back" };
-    let pots = [];
-    let waterDrops = [];
-    let sunOrbs = [];
-    let sunlightMeter = 0;
+    // WebAudio splash / super splash
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = AudioCtx ? new AudioCtx() : null;
+    function playSplashEffect(volume=0.25, freq=600, dur=0.28){
+      if(!audioCtx) return;
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      g.gain.setValueAtTime(volume, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime+dur);
+    }
+
+    // Game state
+    let timeLeft = 120.0; // seconds until night
     let score = 0;
-    let gameTime = 120; // seconds to night
-    let superThrowReady = false;
 
-    // ====== Spawn Pots ======
-    function spawnPots() {
-        pots = [];
-        for (let i = 0; i < 5; i++) {
-            let px = Math.random() * (W - 100) + 50;
-            let py = Math.random() * (H / 2) + H / 3;
-            pots.push({
-                x: px,
-                y: py,
-                w: 70,
-                h: 60,
-                thirst: 100,
-                healthy: true,
-                growAnim: 0
-            });
-        }
-    }
-    spawnPots();
+    const player = {
+      x: W/2, y: H - 150, w: 120, h: 140,
+      imgFront: imgFront, imgBack: imgBack,
+      dir:'back',
+      targetX: W/2,
+      moveEase: 0.14  // easing factor for smooth movement
+    };
 
-    // ====== Controls ======
+    // single plant in middle (no pots)
+    const plant = {
+      x: W/2 - 120/2,
+      y: H/2 - 80,
+      w: 120,
+      h: 80,
+      thirst: 100,       // 0 - 100
+      growAnim: 0,       // visual bloom on water (0..1)
+      lastHitTime: 0
+    };
+
+    // water particles (drops)
+    let drops = [];
+
+    // sunlight beams & orbs
+    let beams = []; // each: {x, beamY, orbY, orbR, state}
+    let sunlightMeter = 0; // 0..100
+    let superReady = false;
+
+    // particles for splash effect
+    let particles = [];
+
+    // input handling: supports touch & mouse
     let touchStart = null;
-    canvas.addEventListener("touchstart", e => {
-        touchStart = e.touches[0];
-    });
-    canvas.addEventListener("touchend", e => {
-        if (!touchStart) return;
-        let touchEnd = e.changedTouches[0];
-        let dx = touchEnd.clientX - touchStart.clientX;
-        let dy = touchEnd.clientY - touchStart.clientY;
-
-        if (Math.abs(dy) < 50 && Math.abs(dx) > 20 && touchStart.clientY > H - 200) {
-            player.x += dx;
-        } else if (dy < -30) {
-            player.dir = "front";
-            if (superThrowReady) {
-                pots.forEach(p => {
-                    p.thirst = 100;
-                    p.healthy = true;
-                    p.growAnim = 1;
-                });
-                superThrowReady = false;
-                sunlightMeter = 0;
-            } else {
-                waterDrops.push({
-                    x: player.x,
-                    y: player.y,
-                    vx: dx / 25,
-                    vy: dy / 25
-                });
-            }
-            setTimeout(() => player.dir = "back", 200);
-        }
-        touchStart = null;
+    canvas.addEventListener('touchstart', e => {
+      touchStart = e.touches[0];
+    }, {passive:true});
+    canvas.addEventListener('touchend', e => {
+      if(!touchStart) return;
+      const t = e.changedTouches[0];
+      handleSwipe(t.clientX, t.clientY, touchStart.clientX, touchStart.clientY);
+      touchStart = null;
+    }, {passive:true});
+    // mouse fallback for desktop
+    let mouseDownPos = null;
+    canvas.addEventListener('mousedown', e => mouseDownPos = {x:e.clientX,y:e.clientY});
+    canvas.addEventListener('mouseup', e => {
+      if(!mouseDownPos) return;
+      handleSwipe(e.clientX, e.clientY, mouseDownPos.x, mouseDownPos.y);
+      mouseDownPos = null;
     });
 
-    // ====== Update ======
-    function update(dt) {
-        waterDrops.forEach(d => {
-            d.x += d.vx;
-            d.y += d.vy;
-            d.vy += 0.3;
-        });
-        waterDrops = waterDrops.filter(d => d.y < H + 50);
-
-        if (Math.random() < 0.01) {
-            sunOrbs.push({ x: Math.random() * (W - 30) + 15, y: -20, r: 15 });
-        }
-        sunOrbs.forEach(s => s.y += 2);
-
-        sunOrbs = sunOrbs.filter(s => {
-            if (Math.hypot(s.x - player.x, s.y - player.y) < s.r + player.w / 2) {
-                sunlightMeter += 20;
-                if (sunlightMeter >= 100) {
-                    sunlightMeter = 100;
-                    superThrowReady = true;
-                }
-                return false;
-            }
-            return s.y < H + 30;
-        });
-
-        waterDrops.forEach(d => {
-            pots.forEach(p => {
-                if (d.x > p.x && d.x < p.x + p.w &&
-                    d.y > p.y && d.y < p.y + p.h) {
-                    p.thirst = 100;
-                    p.healthy = true;
-                    p.growAnim = 1;
-                    score += 10;
-                    playSplash();
-                    d.y = H + 100;
-                }
+    function handleSwipe(endX,endY,startX,startY){
+      const dx = endX - startX;
+      const dy = endY - startY;
+      // horizontal swipe near bottom moves player target
+      if (Math.abs(dy) < 50 && Math.abs(dx) > 20 && startY > H - 180){
+        player.targetX = Math.max(80, Math.min(W-80, player.x + dx));
+      }
+      // upward swipe -> throw
+      else if (dy < -30){
+        // if super ready -> super throw
+        if(superReady){
+          // big splash: fill thirst instantly
+          plant.thirst = 100;
+          plant.growAnim = 1;
+          superReady = false; sunlightMeter = 0;
+          // particles + sound
+          for(let i=0;i<30;i++){
+            particles.push({
+              x: plant.x + plant.w/2 + (Math.random()-0.5)*80,
+              y: plant.y + 30 + (Math.random()-0.5)*40,
+              vx: (Math.random()-0.5)*6, vy: -Math.random()*6,
+              life: 700 + Math.random()*300
             });
-        });
-
-        pots.forEach(p => {
-            p.thirst -= 0.05 * dt;
-            if (p.thirst <= 25) p.healthy = false;
-            if (p.growAnim > 0) p.growAnim -= dt / 500;
-            if (p.growAnim < 0) p.growAnim = 0;
-        });
-
-        gameTime -= dt / 1000;
-        if (gameTime <= 0) {
-            alert(`Game Over! Score: ${score}`);
-            spawnPots();
-            gameTime = 120;
-            score = 0;
-            sunlightMeter = 0;
-        }
-    }
-
-    // ====== Draw ======
-    function draw() {
-        let t = 1 - gameTime / 120;
-        ctx.fillStyle = `rgb(${200 - 100 * t}, ${230 - 80 * t}, ${255 - 200 * t})`;
-        ctx.fillRect(0, 0, W, H);
-
-        ctx.fillStyle = "yellow";
-        let sunX = W - 100 - t * (W - 200);
-        ctx.beginPath();
-        ctx.arc(sunX, 100, 50, 0, Math.PI * 2);
-        ctx.fill();
-
-        pots.forEach(p => {
-            ctx.fillStyle = "#8B4513";
-            ctx.fillRect(p.x, p.y, p.w, p.h);
-            let growScale = 1 + p.growAnim * 0.3;
-            let plantImg = p.healthy ? plantHealthyImg : plantWitheredImg;
-            if (plantImg) {
-                ctx.drawImage(
-                    plantImg,
-                    p.x + p.w / 2 - (p.w / 2) * growScale,
-                    p.y - 80 * growScale,
-                    p.w * growScale,
-                    80 * growScale
-                );
-            } else {
-                ctx.fillStyle = p.healthy ? "green" : "brown";
-                ctx.fillRect(p.x, p.y - 40, p.w, 40);
-            }
-        });
-
-        if (player.dir === "front" && playerFrontImg) {
-            ctx.drawImage(playerFrontImg, player.x - player.w / 2, player.y, player.w, player.h);
-        } else if (playerBackImg) {
-            ctx.drawImage(playerBackImg, player.x - player.w / 2, player.y, player.w, player.h);
+          }
+          playSplashEffect(0.45, 400, 0.6);
+          score += 30;
         } else {
-            ctx.fillStyle = "red";
-            ctx.fillRect(player.x - 20, player.y, 40, 80);
+          // normal throw: create a water drop with initial velocity according to swipe
+          player.dir = 'front';
+          setTimeout(()=>player.dir='back', 220);
+          const powerX = dx / 15;
+          const powerY = dy / 40; // dy negative => powerY negative => upward
+          drops.push({
+            x: player.x,
+            y: player.y,
+            vx: powerX,
+            vy: powerY,
+            life: 5000
+          });
         }
-
-        ctx.fillStyle = "blue";
-        waterDrops.forEach(d => {
-            ctx.beginPath();
-            ctx.arc(d.x, d.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        sunOrbs.forEach(s => {
-            ctx.fillStyle = "yellow";
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = "orange";
-            ctx.stroke();
-        });
-
-        ctx.fillStyle = "orange";
-        ctx.fillRect(10, 10, (sunlightMeter / 100) * 200, 15);
-        ctx.strokeRect(10, 10, 200, 15);
-
-        ctx.fillStyle = "blue";
-        let avgThirst = pots.reduce((sum, p) => sum + p.thirst, 0) / pots.length;
-        ctx.fillRect(10, 30, (avgThirst / 100) * 200, 15);
-        ctx.strokeRect(10, 30, 200, 15);
-
-        ctx.fillStyle = "black";
-        ctx.font = "16px Arial";
-        ctx.fillText(`Score: ${score}`, 10, 60);
-        ctx.fillText(`Game by Balaji`, W - 150, 20);
+      }
     }
 
-    // ====== Main Loop ======
-    let lastTime = 0;
-    function loop(timestamp) {
-        let dt = timestamp - lastTime;
-        lastTime = timestamp;
-        update(dt);
-        draw();
-        requestAnimationFrame(loop);
+    // spawn random beam (visual guidance) - every few seconds
+    function maybeSpawnBeam(){
+      if(Math.random() < 0.01){
+        const bx = 120 + Math.random()*(W - 240);
+        beams.push({
+          x: bx,
+          orbY: -10,
+          orbR: 14,
+          state: 'falling',
+          speed: 2 + Math.random()*1.8
+        });
+      }
     }
-    requestAnimationFrame(loop);
-}
+
+    // helper: rectangle-arc collision (approx)
+    function hitPlant(x,y){
+      return x > plant.x && x < plant.x + plant.w && y > plant.y && y < plant.y + plant.h;
+    }
+
+    // update loop
+    let last = performance.now();
+    function update(now){
+      const dtMs = now - last;
+      last = now;
+      const dt = dtMs / 1000;
+      // update timer
+      timeLeft -= dt;
+      if(timeLeft <= 0){
+        // night reached -> end round
+        setTimeout(()=>{ alert(`Night has come! Score: ${score}`); resetRound(); }, 50);
+      }
+
+      // move player smoothly toward targetX
+      player.x += (player.targetX - player.x) * player.moveEase;
+
+      // update drops (basic projectile + gravity)
+      for(let i=drops.length-1;i>=0;i--){
+        const d = drops[i];
+        d.x += d.vx;
+        d.y += d.vy;
+        d.vy += 0.25; // gravity
+        d.life -= dtMs;
+        // collision with plant
+        if(hitPlant(d.x, d.y)){
+          // refill partially
+          plant.thirst = Math.min(100, plant.thirst + 35);
+          plant.growAnim = 1;
+          plant.lastHitTime = now;
+          // splash particles
+          for(let p=0;p<10;p++) particles.push({
+            x: d.x + (Math.random()-0.5)*12,
+            y: d.y + (Math.random()-0.5)*8,
+            vx: (Math.random()-0.5)*4,
+            vy: -Math.random()*4,
+            life: 400 + Math.random()*400
+          });
+          playSplashEffect(0.18, 700 - Math.random()*200, 0.25);
+          score += 5;
+          drops.splice(i,1);
+          continue;
+        }
+        // remove if offscreen or expired
+        if(d.y > H + 100 || d.life <= 0 || d.x < -100 || d.x > W + 100) drops.splice(i,1);
+      }
+
+      // beams/orbs falling
+      for(let i=beams.length-1;i>=0;i--){
+        const b = beams[i];
+        if(b.state === 'falling'){
+          b.orbY += b.speed;
+          // beam visual only; when orb approaches bottom (player region), we check catch
+          if(b.orbY > H - 260){
+            // player catches orb if horizontally close (easing movement makes player move under)
+            if(Math.abs(b.x - player.x) < 90){
+              // caught
+              sunlightMeter = Math.min(100, sunlightMeter + 25);
+              if(sunlightMeter >= 100){ superReady = true; sunlightMeter = 100; }
+              // small glow + sound
+              for(let p=0;p<8;p++) particles.push({
+                x: b.x + (Math.random()-0.5)*20,
+                y: b.orbY + (Math.random()-0.5)*10,
+                vx: (Math.random()-0.5)*2, vy: -Math.random()*2,
+                life: 400 + Math.random()*200
+              });
+              playSplashEffect(0.12, 1000, 0.15);
+              beams.splice(i,1);
+              continue;
+            } else if (b.orbY > H - 70) {
+              // orb missed and hit ground near plant -> plant loses thirst quicker
+              plant.thirst = Math.max(0, plant.thirst - 12);
+              beams.splice(i,1);
+              continue;
+            }
+          }
+        }
+      }
+
+      // maybe spawn new beam
+      maybeSpawnBeam();
+
+      // particles update
+      for(let i=particles.length-1;i>=0;i--){
+        let p = particles[i];
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.12;
+        p.life -= dtMs;
+        if(p.life <= 0) particles.splice(i,1);
+      }
+
+      // plant thirst drains slowly; faster if missed drops or misses
+      const thirstDecay = 1.0 * dt; // normal drain per sec
+      plant.thirst = Math.max(0, plant.thirst - thirstDecay);
+
+      // growAnim ticks down
+      if(plant.growAnim > 0) plant.growAnim = Math.max(0, plant.growAnim - dt*1.2);
+
+      // update score gently (no op) and loop
+      requestAnimationFrame(update);
+      // draw
+      drawScene(now);
+    }
+
+    function drawScene(now){
+      // day->night background
+      const t = Math.max(0, Math.min(1, 1 - (timeLeft / 120))); // 0..1
+      // blend from bright blue to darker evening
+      const r = Math.round(200 - 90*t), g = Math.round(230 - 120*t), b = Math.round(255 - 200*t);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(0,0,W,H);
+
+      // sun: move from right to left
+      const sunX = W - 100 - t * (W - 200);
+      const sunY = 90;
+      // sun glow
+      const grad = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 90);
+      grad.addColorStop(0, 'rgba(255,230,100,0.95)');
+      grad.addColorStop(1, 'rgba(255,230,100,0.08)');
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(sunX,sunY,80,0,Math.PI*2); ctx.fill();
+      // sun disk
+      ctx.fillStyle='rgba(255,200,60,1)'; ctx.beginPath(); ctx.arc(sunX,sunY,36,0,Math.PI*2); ctx.fill();
+      // credits text below sun
+      ctx.fillStyle = 'rgba(15,15,15,0.9)';
+      ctx.font = '14px system-ui, Arial'; ctx.textAlign='center';
+      ctx.fillText('Game by Balaji', sunX, sunY + 58);
+
+      // clouds (simple)
+      drawCloud(W*0.18, 130, 1.0);
+      drawCloud(W*0.5, 110, 0.9);
+
+      // beams (visual guidance)
+      beams.forEach(b => {
+        // vertical beam gradient
+        const bx = b.x;
+        const beamTop = 0;
+        const beamBottom = b.orbY + 4;
+        const beamGrad = ctx.createLinearGradient(bx, beamTop, bx, beamBottom);
+        beamGrad.addColorStop(0, 'rgba(255,240,160,0.0)');
+        beamGrad.addColorStop(0.2, 'rgba(255,240,160,0.05)');
+        beamGrad.addColorStop(0.7, 'rgba(255,220,80,0.22)');
+        beamGrad.addColorStop(1, 'rgba(255,200,50,0.35)');
+        ctx.fillStyle = beamGrad;
+        ctx.fillRect(bx-18, beamTop, 36, Math.max(0, beamBottom));
+
+        // orb
+        const orbX = b.x, orbY = b.orbY;
+        // glow
+        const g2 = ctx.createRadialGradient(orbX, orbY, 0, orbX, orbY, b.orbR*3);
+        g2.addColorStop(0, 'rgba(255,230,120,0.95)');
+        g2.addColorStop(1, 'rgba(255,200,40,0.05)');
+        ctx.fillStyle = g2;
+        ctx.beginPath(); ctx.arc(orbX, orbY, b.orbR*2.6,0,Math.PI*2); ctx.fill();
+        // orb disk
+        ctx.fillStyle = 'rgba(255,210,60,1)'; ctx.beginPath(); ctx.arc(orbX, orbY, b.orbR,0,Math.PI*2); ctx.fill();
+      });
+
+      // draw plant (choose image based on thirst)
+      // logic: 100 = full. If thirst < 100 but >25 show Health.PNG as "low" state (because you asked),
+      // if thirst <=25 show Dead.PNG
+      let plantImg = null;
+      if (plant.thirst <= 25) plantImg = imgDead || imgHealth || null;
+      else if (plant.thirst < 100) plantImg = imgHealth || imgFront || null;
+      else plantImg = imgFront || imgHealth || null;
+
+      // plant bounding area (we draw plant centered at plant.x,plant.y)
+      const px = plant.x, py = plant.y;
+
+      // subtle bloom scale from growAnim
+      const scale = 1 + plant.growAnim*0.28;
+      const drawPW = plant.w * scale, drawPH = plant.h * scale;
+      if(plantImg){
+        ctx.drawImage(plantImg, px + plant.w/2 - drawPW/2, py - drawPH + 18, drawPW, drawPH);
+      } else {
+        // fallback simple green blob
+        ctx.fillStyle = plant.thirst <= 25 ? '#7b4b2f' : '#228b22';
+        ctx.beginPath(); ctx.ellipse(px + plant.w/2, py - drawPH/2 + 8, drawPW/2, drawPH/2, 0,0,Math.PI*2); ctx.fill();
+      }
+
+      // plant thirst indicator (a small glow if low)
+      if(plant.thirst <= 25){
+        // fade overlay for dead
+        ctx.fillStyle = 'rgba(30,30,30,0.15)';
+        ctx.fillRect(px-6, py- drawPH, plant.w+12, drawPH+30);
+      }
+
+      // draw player at bottom (smooth with easing)
+      const drawPlayerX = player.x - player.w/2;
+      const drawPlayerY = player.y;
+      if(player.dir === 'front' && imgFront){
+        ctx.drawImage(imgFront, drawPlayerX, drawPlayerY, player.w, player.h);
+      } else if(imgBack){
+        ctx.drawImage(imgBack, drawPlayerX, drawPlayerY, player.w, player.h);
+      } else {
+        ctx.fillStyle = '#5b3a2e'; ctx.fillRect(drawPlayerX, drawPlayerY, player.w, player.h);
+      }
+
+      // laser beam from sun to the right guide for the next beam (visual)
+      // show a soft beam following the closest beam to right of player (makes it feel like "moving laser to right")
+      const sorted = beams.slice().sort((a,b)=>Math.abs(a.x-player.x)-Math.abs(b.x-player.x));
+      if(sorted.length>0){
+        const b=sorted[0];
+        // line with glow
+        const gx = b.x;
+        const gy = b.orbY;
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 210, 80, 0.12)';
+        ctx.lineWidth = 42; ctx.lineCap='round';
+        ctx.moveTo(gx, 0); ctx.lineTo(gx, gy+6); ctx.stroke();
+        ctx.beginPath(); ctx.strokeStyle='rgba(255, 230, 120, 0.18)'; ctx.lineWidth=20; ctx.moveTo(gx,0); ctx.lineTo(gx, gy+6); ctx.stroke();
+      }
+
+      // drops
+      drops.forEach(d => {
+        ctx.fillStyle = 'rgba(60,140,255,0.95)';
+        ctx.beginPath(); ctx.ellipse(d.x, d.y, 6, 8, 0,0, Math.PI*2); ctx.fill();
+        // little tail
+        ctx.fillStyle = 'rgba(120,190,255,0.25)';
+        ctx.beginPath(); ctx.ellipse(d.x - d.vx*2, d.y - d.vy*2, 5,3, 0,0, Math.PI*2); ctx.fill();
+      });
+
+      // particles
+      particles.forEach(p=>{
+        ctx.fillStyle = 'rgba(180,220,255,0.85)';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3,0,Math.PI*2); ctx.fill();
+      });
+
+      // UI bars: sunlight (orange) and thirst (blue)
+      // left top corner
+      ctx.save();
+      ctx.translate(14,14);
+      // sunlight bar
+      ctx.fillStyle = 'rgba(0,0,0,0.12)'; roundRect(ctx, 0, 0, 220, 22, 12, true, false);
+      ctx.fillStyle = '#ffb65e'; roundRect(ctx, 2, 2, Math.max(6,(sunlightMeter/100)*216), 18, 10, true, false);
+      // small label
+      ctx.fillStyle = '#2b2b2b'; ctx.font = '12px system-ui, Arial'; ctx.textAlign='left';
+      ctx.fillText('Sunlight', 6, 16);
+
+      // thirst bar below
+      ctx.translate(0, 30);
+      ctx.fillStyle = 'rgba(0,0,0,0.12)'; roundRect(ctx, 0, 0, 220, 22, 12, true, false);
+      ctx.fillStyle = '#6fb6ff'; roundRect(ctx, 2, 2, Math.max(6, (plant.thirst/100)*216), 18, 10, true, false);
+      ctx.fillStyle = '#2b2b2b'; ctx.font='12px system-ui, Arial'; ctx.fillText('Plant Thirst', 6, 16);
+      ctx.restore();
+
+      // show super-ready indicator (small)
+      if(superReady){
+        ctx.fillStyle='rgba(40,200,160,0.95)';
+        ctx.beginPath(); ctx.ellipse(W - 54, 40, 28, 16,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.font='12px system-ui, Arial'; ctx.textAlign='center';
+        ctx.fillText('SUPER', W - 54, 44);
+      }
+
+      // score
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.font = '14px system-ui, Arial'; ctx.textAlign='left';
+      ctx.fillText(`Score: ${score}`, 14, H - 16);
+
+      // small shadow ground under player
+      const shadowGrad = ctx.createLinearGradient(player.x, player.y+player.h-8, player.x, player.y+player.h+30);
+      shadowGrad.addColorStop(0, 'rgba(0,0,0,0.25)'); shadowGrad.addColorStop(1, 'rgba(0,0,0,0.02)');
+      ctx.fillStyle = shadowGrad;
+      ctx.beginPath(); ctx.ellipse(player.x, player.y+player.h+6, 62,14,0,0,Math.PI*2); ctx.fill();
+    }
+
+    // utility: round rectangle
+    function roundRect(ctx,x,y,w,h,r, fill, stroke){
+      if(typeof r === 'undefined') r = 5;
+      ctx.beginPath();
+      ctx.moveTo(x+r, y);
+      ctx.arcTo(x+w, y, x+w, y+h, r);
+      ctx.arcTo(x+w, y+h, x, y+h, r);
+      ctx.arcTo(x, y+h, x, y, r);
+      ctx.arcTo(x, y, x+w, y, r);
+      ctx.closePath();
+      if(fill) ctx.fill();
+      if(stroke) ctx.stroke();
+    }
+
+    // utility: cloud
+    function drawCloud(cx, cy, scale=1){
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.beginPath();
+      const s = 42*scale;
+      ctx.ellipse(cx - s*1.1, cy, s*0.9, s*0.6, 0,0,Math.PI*2);
+      ctx.ellipse(cx, cy - 6*scale, s, s*0.68, 0,0,Math.PI*2);
+      ctx.ellipse(cx + s*1.1, cy, s*0.78, s*0.56, 0,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    // reset round
+    function resetRound(){
+      timeLeft = 120;
+      score = 0;
+      plant.thirst = 100;
+      sunlightMeter = 0;
+      superReady = false;
+      beams = []; drops = []; particles = [];
+      player.x = W/2; player.targetX = player.x;
+    }
+
+    // start animations
+    requestAnimationFrame(update);
+
+    // also update beams position regularly (simulate falling smoothly in ticks)
+    setInterval(()=> {
+      // sync beams orb positions easing towards target to keep things smooth (already handled in update)
+    }, 100);
+
+    // add repeated spawn attempts so beams appear
+    setInterval(()=> maybeSpawnBeam(), 1000);
+
+    // expose a console debug if needed
+    window._plantGame = { reset: resetRound, getState: ()=>({timeLeft,score,plant}) };
+  } // end start()
+
+})(); // IIFE
 </script>
 </body>
 </html>
