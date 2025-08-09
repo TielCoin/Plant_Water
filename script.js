@@ -474,3 +474,18 @@ endScreen.addEventListener('click', () => {
   sunlightMeter = 0; superReady = false;
   running = true; lastTS = 0; rafId = requestAnimationFrame(loop);
 });
+// --- your existing game.js code ends here ---
+
+
+// Prevent touch scrolling when swiping on the canvas
+document.body.addEventListener("touchstart", function(e) {
+    if (e.target.tagName.toLowerCase() === 'canvas') {
+        e.preventDefault();
+    }
+}, { passive: false });
+
+document.body.addEventListener("touchmove", function(e) {
+    if (e.target.tagName.toLowerCase() === 'canvas') {
+        e.preventDefault();
+    }
+}, { passive: false });
