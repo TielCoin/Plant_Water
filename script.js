@@ -139,23 +139,6 @@ function spawnPlants() {
 }
 
 // --- Input: touch/mouse swipe handling
-let touchStart = null;
-canvas.addEventListener('touchstart', e => { touchStart = e.touches[0]; }, { passive: true });
-canvas.addEventListener('touchend', e => {
-  if (!touchStart) return;
-  const t = e.changedTouches[0];
-  handleSwipe(t.clientX, t.clientY, touchStart.clientX, touchStart.clientY);
-  touchStart = null;
-}, { passive: true });
-
-let mouseDown = null;
-canvas.addEventListener('mousedown', e => { mouseDown = { x: e.clientX, y: e.clientY }; });
-canvas.addEventListener('mouseup', e => {
-  if (!mouseDown) return;
-  handleSwipe(e.clientX, e.clientY, mouseDown.x, mouseDown.y);
-  mouseDown = null;
-});
-
 function handleSwipe(endX, endY, startX, startY) {
   const dx = endX - startX, dy = endY - startY;
   // move player if horizontal swipe near bottom
@@ -180,10 +163,17 @@ function handleSwipe(endX, endY, startX, startY) {
       playSplash(0.44, 380, 0.6);
       score += 24;
     } else {
-      // normal throw
+      // normal throw — more powerful
       player.dir = 'front';
       setTimeout(() => player.dir = 'back', 220);
-      drops.push({ x: player.x, y: player.y, vx: dx / 18, vy: dy / 36, life: 4500 });
+      const powerBoost = 1.6; // increase this for more throw speed
+      drops.push({
+        x: player.x,
+        y: player.y,
+        vx: (dx / 18) * powerBoost,
+        vy: (dy / 36) * powerBoost,
+        life: 4500
+      });
     }
   }
 }
