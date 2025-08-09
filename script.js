@@ -273,7 +273,7 @@ function loop(ts) {
     if (orb) {
       orb.y += orb.vy;
       // catch
-      if (orb.y > canvas.height - 220 && Math.abs(orb.x - player.x) < 90) {
+      if (orb.y > canvas.height - 220 && Math.abs(orb.x - player.x) < 50) {
         sunlightMeter = clamp(sunlightMeter + 28, 0, 100);
         if (sunlightMeter >= 100) { sunlightMeter = 100; superReady = true; }
         for (let i = 0; i < 12; i++) particles.push({
@@ -376,9 +376,11 @@ function drawScene() {
         ctx.drawImage(imgs.Health, -p.w / 2 * sc, -p.h / 2 * sc, p.w * sc, p.h * sc);
         ctx.restore();
       } else {
-        ctx.fillStyle = '#2e9b2e'; ctx.beginPath();
-        ctx.ellipse(px, py, p.w / 2, p.h / 2, 0, 0, Math.PI * 2); ctx.fill();
-      }
+        ctx.fillStyle = '#2e9b2e'; // in draw orbs
+ctx.beginPath();
+ctx.arc(o.x, o.y, 12, 0, Math.PI * 2); // was 20, now 12
+ctx.fillStyle = 'yellow';
+ctx.fill();
     }
   }
 
