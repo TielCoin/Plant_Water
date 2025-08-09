@@ -1,3 +1,11 @@
+// Completely block default touch gestures on the page
+document.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchmove', function(e) {
+    e.preventDefault();
+}, { passive: false });
 /* script.js
    Full game logic. Place this file alongside index.html and style.css
    and the required PNGs:
