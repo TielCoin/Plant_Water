@@ -270,27 +270,28 @@ function loop(ts) {
     }
 
     // orb update
-    if (orb) {
-      orb.y += orb.vy;
-      // catch
-      if (orb.y > canvas.height - 220 && Math.abs(orb.x - player.x) < 50) {
-        sunlightMeter = clamp(sunlightMeter + 28, 0, 100);
-        if (sunlightMeter >= 100) { sunlightMeter = 100; superReady = true; }
-        for (let i = 0; i < 12; i++) particles.push({
-          x: orb.x + (Math.random() - 0.5) * 24, y: orb.y + (Math.random() - 0.5) * 16,
-          vx: (Math.random() - 0.5) * 2, vy: -Math.random() * 2, life: 320
-        });
-        try { audioOrbCollect.play(); } catch (e) {}
-        orb = null;
-      } else if (orb.y > canvas.height - 60) {
-        // missed: penalty
-        for (let p of plants) if (p.alive) p.thirst = Math.max(0, p.thirst - 10);
-        orb = null;
-      }
-    } else {
-      // spawn new orb every ~5s
-      if (!lastOrbTime || (performance.now() - lastOrbTime) > 5000) spawnOrb();
-    }
+if (orb) {
+  orb.y += orb.vy;
+  // catch
+  if (orb.y > canvas.height - 220 && Math.abs(orb.x - player.x) < 60) { // reduced from 90 to 60 for smaller catch radius
+    sunlightMeter = clamp(sunlightMeter + 28, 0, 100);
+    if (sunlightMeter >= 100) { sunlightMeter = 100; superReady = true; }
+    for (let i = 0; i < 12; i++) particles.push({
+      x: orb.x + (Math.random() - 0.5) * 16, // smaller particle spread
+      y: orb.y + (Math.random() - 0.5) * 12,
+      vx: (Math.random() - 0.5) * 2, vy: -Math.random() * 2, life: 320
+    });
+    try { audioOrbCollect.play(); } catch (e) {}
+    orb = null;
+  } else if (orb.y > canvas.height - 60) {
+    // missed: penalty
+    for (let p of plants) if (p.alive) p.thirst = Math.max(0, p.thirst - 10);
+    orb = null;
+  }
+} else {
+  // spawn new orb every ~5s
+  if (!lastOrbTime || (performance.now() - lastOrbTime) > 5000) spawnOrb();
+}
 
     // update particles
     updateParticles(dt);
@@ -376,11 +377,9 @@ function drawScene() {
         ctx.drawImage(imgs.Health, -p.w / 2 * sc, -p.h / 2 * sc, p.w * sc, p.h * sc);
         ctx.restore();
       } else {
-        ctx.fillStyle = '#2e9b2e'; // in draw orbs
-ctx.beginPath();
-ctx.arc(o.x, o.y, 12, 0, Math.PI * 2); // was 20, now 12
-ctx.fillStyle = 'yellow';
-ctx.fill();
+        ctx.fillStyle = '#2e9b2e'; ctx.beginPath();
+        ctx.ellipse(px, py, p.w / 2, p.h / 2, 0, 0, Math.PI * 2); ctx.fill();
+      }
     }
   }
 
