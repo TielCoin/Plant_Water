@@ -9,21 +9,21 @@
 <body>
   <canvas id="gameCanvas"></canvas>
 
-  <!-- Small centered start dialog -->
+  <!-- Start / loading dialog -->
   <div id="startDialog" class="dialog">
     <div class="dialog-inner">
-      <h2>Water the Plants</h2>
-      <p class="instructions">
-        Swipe up to throw water. Swipe left/right near the bottom to move.<br>
-        Catch sunlight orbs to charge Super Throw. Keep plants alive until night.
-      </p>
+      <h1>Water the Plants</h1>
+      <p class="subtitle">Swipe up to throw water • Swipe left/right near bottom to move • Catch sunlight to charge Super Throw</p>
       <div id="loaderText">Loading assets... 0%</div>
-      <div class="dialog-buttons">
-        <button id="startBtn" disabled>Start Game</button>
+      <div class="controls">
+        <button id="startBtn" disabled>Loading...</button>
       </div>
-      <small class="hint">Images required in same folder: Front.png, Back.PNG, Health.PNG, Dead.PNG, Bg.png, sun.png</small>
+      <small class="hint">Required image files: Front.png, Back.PNG, Health.PNG, Dead.PNG, Bg.png, sun.png</small>
     </div>
   </div>
+
+  <!-- end screen -->
+  <div id="endScreen" class="end-screen" style="display:none">Good night 💤</div>
 
   <div id="byline">Game by Balaji</div>
 
