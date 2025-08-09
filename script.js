@@ -139,6 +139,22 @@ function spawnPlants() {
 }
 
 // --- Input: touch/mouse swipe handling
+let touchStart = null;
+canvas.addEventListener('touchstart', e => { touchStart = e.touches[0]; }, { passive: true });
+canvas.addEventListener('touchend', e => {
+  if (!touchStart) return;
+  const t = e.changedTouches[0];
+  handleSwipe(t.clientX, t.clientY, touchStart.clientX, touchStart.clientY);
+  touchStart = null;
+}, { passive: true });
+
+let mouseDown = null;
+canvas.addEventListener('mousedown', e => { mouseDown = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('mouseup', e => {
+  if (!mouseDown) return;
+  handleSwipe(e.clientX, e.clientY, mouseDown.x, mouseDown.y);
+  mouseDown = null;
+});
 function handleSwipe(endX, endY, startX, startY) {
   const dx = endX - startX, dy = endY - startY;
   // move player if horizontal swipe near bottom
