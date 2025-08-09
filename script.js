@@ -176,7 +176,7 @@ function handleSwipe(endX, endY, startX, startY) {
       // normal throw
       player.dir = 'front';
       setTimeout(() => player.dir = 'back', 220);
-      drops.push({ x: player.x, y: player.y, vx: dx / 18, vy: dy / 36, life: 4500 });
+      drops.push({ x: player.x, y: player.y, vx: dx / 12, vy: dy / 24, life: 4500 });
     }
   }
 }
@@ -286,7 +286,7 @@ function loop(ts) {
     for (let p of plants) {
       if (!p.alive) continue;
       // tuned drain
-      p.thirst = Math.max(0, p.thirst - (0.9 * dt / 1000));
+      p.thirst = Math.max(0, p.thirst - (1.5 * dt / 1000));
       if (p.thirst <= 0) { p.alive = false; p.thirst = 0; }
       if (p.grow > 0) p.grow = Math.max(0, p.grow - (dt / 600));
     }
