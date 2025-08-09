@@ -113,7 +113,7 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 // --- Initialize plants
 function spawnPlants() {
     plants = [];
-    const minDistance = 150; // minimum pixels apart
+    const minDistance = 80; // minimum pixels apart
 
     for (let i = 0; i < 5; i++) {
         let newPlant;
