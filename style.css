@@ -98,3 +98,7 @@ button:disabled { opacity: 0.55; cursor: not-allowed; box-shadow:none; }
   text-shadow: 0 6px 22px rgba(0,0,0,0.6);
   pointer-events: none;
 }
+/* Prevent page scroll on touch for game area */
+canvas {
+    touch-action: none;  /* Stops browser from handling swipe gestures */
+}
