@@ -2,12 +2,12 @@
 const playerFrontImg = new Image();
 playerFrontImg.src = "Front.png";
 const playerBackImg = new Image();
-playerBackImg.src = "Back.png";
+playerBackImg.src = "Back.PNG";
 
 const plantHealthyImg = new Image();
-plantHealthyImg.src = "Health.png";
+plantHealthyImg.src = "Health.PNG";
 const plantWitheredImg = new Image();
-plantWitheredImg.src = "Dead.png";
+plantWitheredImg.src = "Dead.PNG";
 
 // ====== Web Audio API for Splash Sound ======
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
