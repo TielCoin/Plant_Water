@@ -112,28 +112,30 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
 // --- Initialize plants
 function spawnPlants() {
-    plants = [];
-    const minDistance = 80; // minimum pixels apart
+  plants.length = 0;
+  const count = 4 + Math.floor(Math.random() * 2); // 4-5 plants
+  const margin = 80;
+  const minDistance = 120; // Minimum distance between plants
 
-    for (let i = 0; i < 5; i++) {
-        let newPlant;
-        let attempts = 0;
-        do {
-            newPlant = {
-                x: 100 + Math.random() * (canvas.width - 200),
-                y: canvas.height / 2 + Math.random() * 100,
-                thirst: 100,
-                grow: 0,
-                alive: true
-            };
-            attempts++;
-        } while (
-            plants.some(p => Math.hypot(p.x - newPlant.x, p.y - newPlant.y) < minDistance) &&
-            attempts < 50 // prevent infinite loop
-        );
+  for (let i = 0; i < count; i++) {
+    let px, py;
+    let safe = false;
+    let tries = 0;
+    do {
+      px = margin + Math.random() * (canvas.width - margin * 2);
+      py = canvas.height * 0.35 + Math.random() * canvas.height * 0.18;
+      safe = plants.every(p => Math.hypot(p.x - px, p.y - py) >= minDistance);
+      tries++;
+    } while (!safe && tries < 50);
 
-        plants.push(newPlant);
-    }
+    plants.push({
+      x: px, y: py,
+      w: 110, h: 78,
+      thirst: 100,
+      alive: true,
+      grow: 0
+    });
+  }
 }
 
 // --- Input: touch/mouse swipe handling
