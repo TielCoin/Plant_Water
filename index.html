@@ -4,10 +4,270 @@
 <meta charset="UTF-8">
 <title>Water the Plant</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="style.css">
+<style>
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #cceeff;
+    touch-action: none;
+}
+canvas {
+    display: block;
+}
+</style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<script src="game.js"></script>
+<script>
+// ====== Load Required PNGs ======
+function loadImage(src) {
+    return new Promise(res => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = () => res(null); // fallback if missing
+        img.src = src;
+    });
+}
+
+Promise.all([
+    loadImage("Front.png"),
+    loadImage("Back.PNG"),
+    loadImage("Health.PNG"),
+    loadImage("Dead.PNG")
+]).then(([frontImg, backImg, healthyImg, deadImg]) => {
+    startGame(frontImg, backImg, healthyImg, deadImg);
+});
+
+function startGame(playerFrontImg, playerBackImg, plantHealthyImg, plantWitheredImg) {
+    // ====== Web Audio API for Splash Sound ======
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSplash() {
+        let osc = audioCtx.createOscillator();
+        let gainNode = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.connect(gainNode).connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    // ====== Setup Canvas ======
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    let W, H;
+    function resize() {
+        W = canvas.width = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    // ====== Game State ======
+    let player = { x: W / 2, y: H - 150, w: 80, h: 100, dir: "back" };
+    let pots = [];
+    let waterDrops = [];
+    let sunOrbs = [];
+    let sunlightMeter = 0;
+    let score = 0;
+    let gameTime = 120; // seconds to night
+    let superThrowReady = false;
+
+    // ====== Spawn Pots ======
+    function spawnPots() {
+        pots = [];
+        for (let i = 0; i < 5; i++) {
+            let px = Math.random() * (W - 100) + 50;
+            let py = Math.random() * (H / 2) + H / 3;
+            pots.push({
+                x: px,
+                y: py,
+                w: 70,
+                h: 60,
+                thirst: 100,
+                healthy: true,
+                growAnim: 0
+            });
+        }
+    }
+    spawnPots();
+
+    // ====== Controls ======
+    let touchStart = null;
+    canvas.addEventListener("touchstart", e => {
+        touchStart = e.touches[0];
+    });
+    canvas.addEventListener("touchend", e => {
+        if (!touchStart) return;
+        let touchEnd = e.changedTouches[0];
+        let dx = touchEnd.clientX - touchStart.clientX;
+        let dy = touchEnd.clientY - touchStart.clientY;
+
+        if (Math.abs(dy) < 50 && Math.abs(dx) > 20 && touchStart.clientY > H - 200) {
+            player.x += dx;
+        } else if (dy < -30) {
+            player.dir = "front";
+            if (superThrowReady) {
+                pots.forEach(p => {
+                    p.thirst = 100;
+                    p.healthy = true;
+                    p.growAnim = 1;
+                });
+                superThrowReady = false;
+                sunlightMeter = 0;
+            } else {
+                waterDrops.push({
+                    x: player.x,
+                    y: player.y,
+                    vx: dx / 25,
+                    vy: dy / 25
+                });
+            }
+            setTimeout(() => player.dir = "back", 200);
+        }
+        touchStart = null;
+    });
+
+    // ====== Update ======
+    function update(dt) {
+        waterDrops.forEach(d => {
+            d.x += d.vx;
+            d.y += d.vy;
+            d.vy += 0.3;
+        });
+        waterDrops = waterDrops.filter(d => d.y < H + 50);
+
+        if (Math.random() < 0.01) {
+            sunOrbs.push({ x: Math.random() * (W - 30) + 15, y: -20, r: 15 });
+        }
+        sunOrbs.forEach(s => s.y += 2);
+
+        sunOrbs = sunOrbs.filter(s => {
+            if (Math.hypot(s.x - player.x, s.y - player.y) < s.r + player.w / 2) {
+                sunlightMeter += 20;
+                if (sunlightMeter >= 100) {
+                    sunlightMeter = 100;
+                    superThrowReady = true;
+                }
+                return false;
+            }
+            return s.y < H + 30;
+        });
+
+        waterDrops.forEach(d => {
+            pots.forEach(p => {
+                if (d.x > p.x && d.x < p.x + p.w &&
+                    d.y > p.y && d.y < p.y + p.h) {
+                    p.thirst = 100;
+                    p.healthy = true;
+                    p.growAnim = 1;
+                    score += 10;
+                    playSplash();
+                    d.y = H + 100;
+                }
+            });
+        });
+
+        pots.forEach(p => {
+            p.thirst -= 0.05 * dt;
+            if (p.thirst <= 25) p.healthy = false;
+            if (p.growAnim > 0) p.growAnim -= dt / 500;
+            if (p.growAnim < 0) p.growAnim = 0;
+        });
+
+        gameTime -= dt / 1000;
+        if (gameTime <= 0) {
+            alert(`Game Over! Score: ${score}`);
+            spawnPots();
+            gameTime = 120;
+            score = 0;
+            sunlightMeter = 0;
+        }
+    }
+
+    // ====== Draw ======
+    function draw() {
+        let t = 1 - gameTime / 120;
+        ctx.fillStyle = `rgb(${200 - 100 * t}, ${230 - 80 * t}, ${255 - 200 * t})`;
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = "yellow";
+        let sunX = W - 100 - t * (W - 200);
+        ctx.beginPath();
+        ctx.arc(sunX, 100, 50, 0, Math.PI * 2);
+        ctx.fill();
+
+        pots.forEach(p => {
+            ctx.fillStyle = "#8B4513";
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            let growScale = 1 + p.growAnim * 0.3;
+            let plantImg = p.healthy ? plantHealthyImg : plantWitheredImg;
+            if (plantImg) {
+                ctx.drawImage(
+                    plantImg,
+                    p.x + p.w / 2 - (p.w / 2) * growScale,
+                    p.y - 80 * growScale,
+                    p.w * growScale,
+                    80 * growScale
+                );
+            } else {
+                ctx.fillStyle = p.healthy ? "green" : "brown";
+                ctx.fillRect(p.x, p.y - 40, p.w, 40);
+            }
+        });
+
+        if (player.dir === "front" && playerFrontImg) {
+            ctx.drawImage(playerFrontImg, player.x - player.w / 2, player.y, player.w, player.h);
+        } else if (playerBackImg) {
+            ctx.drawImage(playerBackImg, player.x - player.w / 2, player.y, player.w, player.h);
+        } else {
+            ctx.fillStyle = "red";
+            ctx.fillRect(player.x - 20, player.y, 40, 80);
+        }
+
+        ctx.fillStyle = "blue";
+        waterDrops.forEach(d => {
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        sunOrbs.forEach(s => {
+            ctx.fillStyle = "yellow";
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "orange";
+            ctx.stroke();
+        });
+
+        ctx.fillStyle = "orange";
+        ctx.fillRect(10, 10, (sunlightMeter / 100) * 200, 15);
+        ctx.strokeRect(10, 10, 200, 15);
+
+        ctx.fillStyle = "blue";
+        let avgThirst = pots.reduce((sum, p) => sum + p.thirst, 0) / pots.length;
+        ctx.fillRect(10, 30, (avgThirst / 100) * 200, 15);
+        ctx.strokeRect(10, 30, 200, 15);
+
+        ctx.fillStyle = "black";
+        ctx.font = "16px Arial";
+        ctx.fillText(`Score: ${score}`, 10, 60);
+        ctx.fillText(`Game by Balaji`, W - 150, 20);
+    }
+
+    // ====== Main Loop ======
+    let lastTime = 0;
+    function loop(timestamp) {
+        let dt = timestamp - lastTime;
+        lastTime = timestamp;
+        update(dt);
+        draw();
+        requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+}
+</script>
 </body>
 </html>
