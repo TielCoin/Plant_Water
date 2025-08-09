@@ -102,3 +102,17 @@ button:disabled { opacity: 0.55; cursor: not-allowed; box-shadow:none; }
 canvas {
     touch-action: none;  /* Stops browser from handling swipe gestures */
 }
+/* Prevent browser scrolling and zooming on the game */
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Prevent any scrollbars */
+    height: 100%;
+    touch-action: none; /* Disable default touch actions like scrolling */
+}
+
+canvas {
+    touch-action: none; /* Specifically for the game canvas */
+    -webkit-user-select: none;
+    user-select: none;
+}
