@@ -1,7 +1,4 @@
 // Completely block default touch gestures on the page
-document.addEventListener('touchstart', function(e) {
-    e.preventDefault();
-}, { passive: false });
 
 document.addEventListener('touchmove', function(e) {
     e.preventDefault();
